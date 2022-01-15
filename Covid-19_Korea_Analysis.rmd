@@ -1,0 +1,1702 @@
+---
+title: "Data Visualization and Analytics (IN2339) - Case study"
+author: "Group 48: Nadija Borovina, Nedžad Hadžiosmanović, Saumya Goyal and Felix Eschmann"
+output:
+  pdf_document:
+    df_print: kable
+    number_sections: true
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 2
+    number_sections: true
+  prettydoc::html_pretty:
+    theme: hpstr
+  word_document:
+    toc: yes
+    toc_depth: '2'
+---
+
+23. Jan. 2021.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message = FALSE)
+```
+
+```{r, echo = FALSE}
+#libraries
+library(tidyverse)
+library(data.table)
+library("lubridate")   
+library(magrittr)
+library("GGally")
+library("ggplot2")
+library("scales")
+library("rgdal")
+library("leaflet")
+library("RColorBrewer")
+library(dplyr)
+library(BBmisc)
+library("car")
+```
+
+
+\newpage
+# INTRODUCTION
+
+This Case study is part of the course, Data Visualization and Analysis in R. We are provided with the dataset from Kaggle (https://www.kaggle.com/kimjihoo/coronavirusdataset). It is about the South Korean Corona Virus outbreak from January 2020 to June 2020. We were asked to group ourselves in a group of no more than 4 and carry out the case study and do an analysis on the provided data. The goal of the case study is to find interesting claims from the provided Dataset and prove them with the statistical hypothesis and understanding.
+
+# Our First step: Tidying
+
+
+Before we could start drawing conclusions from the dataset we were given it was important to clean the data. For this, we divided data tables among ourselves and tidied them. As the structure of data was clean we had to make few other changes for carrying out our analysis and they were:
+
+ - removing un-related/empty columns and rows
+ - replacing NA values with the once that best suited, or removing them altogether
+ -  data types of variables were changed (ex: string to numeric)
+ -  merging related data tables for getting insights
+ 
+# Some Research and findings
+
+
+On January 20, 2020, the first Corona Virus case was reported in South Korea. The patient was a 35-year-old Chinese woman and resident of Wuhan, China who flew from Wuhan to Incheon international airport. But soon after the patient was tested positive, she was put into quarantine facility and there was no community transmission that occurred during this time - as reported by South Korea’s Centers for Disease Control and Prevention (KCDC)
+
+Soon after this few more cases were reported but it was contained by February stabilizing to only 30 cases. **And then came Patient #31**, a 61-year-old woman who tested positive on 17th February in Daegu. It seemed like a standard case until public health authorities started tracing her tracks. What they learned was **shocking**: the woman had, during the previous 10 days, attended two worship services with at least 1,000 other members of her secretive religious sect.
+
+And within 24 hours of this case, the nation's number of confirmed cases started multiplying exponentially. Within 3 days the count skyrocketed past 1,000. At least half of the new cases were linked to the sec called the "Shincheonji" -- which translated to "new heaven and land".
+
+What made this patient #31's case much worse was that this person spent a considerable amount of time in a very crowded area. Soon after this contact tracing was put into place and the Korean government started taking immediate steps to curb the infection rate.
+
+
+*Next we begin with our actual CASE STUDY*
+
+
+```{r, echo=FALSE}
+#loading data
+setwd('case_study_data/data')
+case_dt <- data.table(fread("Case.csv"))
+PatientInfo_dt <- data.table(fread("PatientInfo.csv"))
+dt_policy = fread("Policy.csv")
+dt_SearchTrend = fread("SearchTrend.csv")
+dt_SeoulFloating = fread("SeoulFloating.csv")
+region <- fread("Region.csv")
+weather <- fread("Weather.csv")
+timeProvince <- fread("TimeProvince.csv")
+time <- fread("Time.csv")
+time_age <- fread("TimeAge.csv")
+time_gender <- fread("TimeGender.csv")
+```
+
+```{r, echo=FALSE, results = 'hide'}
+#tidy data
+############################################################################# NADIJA
+
+#summary
+#summary(region)
+#summary(weather)
+#summary(timeProvince)
+
+#structure
+#city and province could be factors for easier mainupulation, but will leave them as chars for now
+#because of large number of them, may change later
+
+#number of rows
+#nrow(region) #244
+#nrow(weather) #26271
+#nrow(timeProvince) #2771
+
+#Dropping rows with NA and NaN values
+weather_tidy <- na.omit(weather)
+timeProvince_tidy <- na.omit(timeProvince)
+region_tidy <- na.omit(region)
+
+#str(region_tidy)
+#str(weather_tidy)
+#str(timeProvince_tidy)
+
+#calculating rows dropped
+#nrow(region) - nrow(region_tidy) #0
+#nrow(weather) - nrow(weather_tidy) #47
+#nrow(timeProvince) - nrow(timeProvince_tidy) #0
+
+#since the province is connected to region$province, we dont want to lose values
+length(unique(weather$province))
+length(unique(weather_tidy$province))
+
+#% of data deleted
+#(nrow(weather) - nrow(weather_tidy))/nrow(weather) * 100
+
+#turning date chars into date
+weather_tidy$date <- as.Date(weather_tidy$date, "%Y-%m-%d")
+#str(weather_tidy)
+
+timeProvince_tidy$date <- as.Date(timeProvince_tidy$date, "%Y-%m-%d")
+#str(weather_tidy)
+
+############################################################################# NEDZAD
+
+names(time)  #"date", "time", "test", "negative", "confirmed", "released", "deceased"
+
+# A FUNCTION WHERE "data_set" REPRESENTS A DATA SET
+how_much_na_values_in_whole_dataset <- function(data_set)
+{
+  number_of_na_sum <- 0  
+  
+  for(i in 1:length(data_set[1, ]))   # "length(data_set[1, ])" gives the number of columns of a data set
+  {
+    logical_na_values <- is.na(data_set[,..i]) #all values from the i-th column
+    
+    number_of_na_sum <-  number_of_na_sum + sum(logical_na_values)
+  }
+  
+  return( number_of_na_sum)
+}
+
+#indicating that there are no NA values in the data set
+how_much_na_values_in_whole_dataset(time_age) 
+how_much_na_values_in_whole_dataset(time)
+how_much_na_values_in_whole_dataset(time_gender)
+
+names(time_age)[ names(time_age) == "age"] <- "age_span"
+
+time_age$date <- ymd(time_age$date)
+
+are_all_observations_in_2020 <- function(date_column) 
+{
+  sum <- 0
+  
+  for(i in 1:length(date_column))
+  {
+    if( year(date_column[i]) != 2020)
+      sum <- sum + 1
+  }
+  
+  return( sum == 0 )
+}
+
+are_all_observations_in_2020(time_age$date)  # "TRUE"; no need to tidy for this point
+
+time_gender$date <- ymd(time_gender$date)
+#class(time_gender$date)  #Date
+are_all_observations_in_2020(time_gender$date)  # "TRUE"; no need to tidy for this point
+
+time$date <- ymd(time$date)
+#class(time$date)  #Date
+are_all_observations_in_2020(time$date)  # "TRUE"; no need to tidy for this point
+
+############################################################################# FELIX
+
+# get summaries of data tables
+#summary(case_dt)
+
+# 1. check case_id for duplicates
+case_id <- case_dt[,1]
+#class(case_id)
+
+duplicated(case_id)
+# no duplicates found
+
+# 2. check manifestations for province
+province <- case_dt[,2]
+unique(province)
+
+# data fully available
+
+# 3. city 
+city <- case_dt[,3]
+unique(city)
+is.na(city)
+
+# shows that instead of NA, values are "-" -> replace with NA - needs to be done in region.csv, patientinfo.csv as well
+# tba: case_dt$city[case_dt$city=="-"] <- NA
+# smaller cities seem to be marked as "from other city" to keep total number of values down
+
+# 4. group
+group <- case_dt[,4]
+unique(group)
+
+# data fully available
+
+# 5. infection_case
+infection_case <- case_dt[,5]
+unique(infection_case)
+
+# data not fully available? Missing data seems to be marked as "etc.". Replace with NA?
+# could be further broken apart per subcategories to be found (church, hospital,...)
+# adapt simultaneously with PatientInfo.csv
+
+# 6. confirmed - gives the number of confirmed infections per larger case
+#case_dt %>% rename(confirmed_infections = confirmed)
+names(case_dt)[names(case_dt) == "confirmed"] <- "confirmed_infections"
+
+# 7. & 8. Latitude & Longitude: appear in region.csv as well
+# only data for 37% of cases (but how many % of total infections?)
+# replacing "-" with NA
+
+latitude <- case_dt[,3]
+# tba case_dt$latitude[case_dt$latitude=="-"] <- NA
+
+longitude <- case_dt[,3]
+# tba case_dt$longitude[case_dt$longitude=="-"] <- NA
+# replacement would need to be done in region.csv as well
+#install.packages('bit64')
+# import data & create data.table
+
+#summary(PatientInfo_dt)
+
+# 1. patient_id - check for duplicates
+patient_id <- PatientInfo_dt[,1]
+unique(duplicated(patient_id))
+patient_id[TRUE]
+
+# issue: all patient_ids are unique, however they surpass the max size for an int in R
+# convert patient_ids to numeric data type - should be comparable to infected_by
+#patient_id
+patient_id <- lapply(patient_id, as.numeric) #as.numeric(patient_id)
+#patient_id
+#class(patient_id)
+
+# 2. sex - empty spot for no data or different gender? leave as it be? or use NA? If to change currently empty fields, then adapt SeoulFloating.csv and TimeGender.csv as well
+sex <- PatientInfo_dt[,2]
+unique(sex)
+
+# 3. age - currently values are strings. convert into other format? If yes, also do so in TimeAge.csv
+sex <- PatientInfo_dt[,2]
+unique(sex)
+
+# 4. country - 99% Koreans
+country <- PatientInfo_dt[,4]
+unique(country)
+
+# one repeating value is "foreign" instead of a specific country. otherwise complete
+
+# 5. province - data complete
+province <- PatientInfo_dt[,5]
+unique(province)
+
+# 6. city
+city <- PatientInfo_dt[,6]
+unique(city)
+is.na(city)
+
+# shows that instead of NA, values are "-" -> if to replace with NA, do so as well in case.csv and SeoulFloating.csv
+# tba: case_dt$city[case_dt$city=="-"] <- NA
+# smaller cities seem to be marked as "from other city" to keep total number of values down
+
+# 7. infection_case
+infection_case <- PatientInfo_dt[,7]
+unique(infection_case)
+
+# data not fully available? Missing data seems to be marked as "etc." or " ". Replace with NA?
+# could be further broken apart per subcategories to be found (church, hospital,...)
+# adapt simultaneously with case.csv
+
+# 8. infected_by - same issue, surpass max int size. thus convert to num
+infected_by <- PatientInfo_dt[,8]
+infected_by <- lapply(infected_by, as.numeric) #as.numeric(infected_by)
+#class(infected_by)
+
+# issue: data is stored as a list object - convert list to numeric:
+as.numeric(as.character(unlist(infected_by)))
+
+# NAs created by this process, however, cols 1 & 8 are now comparable
+
+# 9. contact_number
+contact_number <- PatientInfo_dt[,9]
+unique(contact_number)
+# both "-" and " " appear. Replace both with NA?
+
+# 10. symptom_onset_date - missing data already shown as NA
+symptom_onset_date <- PatientInfo_dt[,10]
+unique(symptom_onset_date)
+
+# 11. confirmed_date - missing data already shown as NA
+confirmed_date <- PatientInfo_dt[,11]
+unique(confirmed_date)
+
+# 12. released_date - missing data already shown as NA
+released_date <- PatientInfo_dt[,12]
+unique(released_date)
+
+# 13. deceased_date - missing data already shown as NA
+deceased_date <- PatientInfo_dt[,13]
+unique(deceased_date)
+
+# 14. state - data is ok
+state <- PatientInfo_dt[,14]
+unique(state)
+
+############################################################################# SAUMYA
+
+#dim(dt_policy)
+#summary(dt_policy)
+#str(dt_policy)
+#colnames(dt_policy)
+
+#ggplot(dt_policy, aes(x = type, y = start_date)) + geom_path()
+
+#head(dt_policy)
+#colnames(dt_policy)
+dt_policy[, Start_month := month(dt_policy[ ,start_date ])]
+
+#Number of policies every month
+dt_policy[, .N, by = Start_month]
+
+#colnames(dt_policy)
+#summary(dt_policy)
+
+#Checking Unique values in all the columns
+dt_policy[,unique(policy_id)]
+dt_policy[,uniqueN(policy_id)]
+#All are unique ids
+
+dt_policy[,unique(country)]
+#this column:country is non-significant as the data is of South Korea only
+
+dt_policy[,unique(type)]
+dt_policy[,uniqueN(type)]
+dt_policy[, .N, by = c("type") ]
+# 8 different types of policies
+
+dt_policy[,unique(gov_policy)]
+dt_policy[,uniqueN(gov_policy)]
+dt_policy[, .N, by = gov_policy]
+# 24 unique data in this column 
+
+dt_policy[,unique(detail)]
+dt_policy[,uniqueN(detail)]
+dt_policy[, .N, by = detail]
+#58 unique data
+
+dt_policy[,unique(end_date)]
+dt_policy[,uniqueN(end_date)]
+dt_policy[, .N, by = end_date]
+# No end_date in 37 rows => more than 50% of the data is empty. Hence removing the column
+
+#removing column end date because of less than 50% available data
+dt_policy[, end_date := NULL]
+#colnames(dt_policy)
+
+#dim(dt_SearchTrend)
+#summary(dt_SearchTrend)
+#colnames(dt_SearchTrend)
+
+#class(dt_SearchTrend$date)
+dt_SearchTrend[,unique(date)]
+dt_SearchTrend[,uniqueN(date)]
+#Every row has unique date
+
+#class(dt_SearchTrend$cold)
+sum(dt_SearchTrend[,is.na(cold)])
+dt_SearchTrend[,unique(cold)]
+dt_SearchTrend[,uniqueN(cold)]
+dt_SearchTrend[, sum(cold), by = year(date) ]
+#clean column
+
+#class(dt_SearchTrend$flu)
+dt_SearchTrend[,mean(flu) ]
+dt_SearchTrend[,uniqueN(flu)]
+dt_SearchTrend[, sum(flu), by = year(date) ]
+#clean column
+
+#class(dt_SearchTrend$pneumonia)
+dt_SearchTrend[,mean(pneumonia) ]
+dt_SearchTrend[,uniqueN(pneumonia)]
+dt_SearchTrend[, sum(pneumonia), by = year(date) ]
+#clean column
+
+#class(dt_SearchTrend$coronavirus)
+dt_SearchTrend[,mean(coronavirus) ]
+dt_SearchTrend[,uniqueN(coronavirus)]
+dt_SearchTrend[, sum(coronavirus), by = year(date)]
+#made new col year
+dt_SearchTrend[, Year := year(date)]
+#clean column
+
+#lot of variation in the min max values
+#ggplot(dt_SearchTrend, aes(x = date, y = coronavirus)) + geom_line()
+
+#dim(dt_SeoulFloating)
+#summary(dt_SeoulFloating)
+#colnames(dt_SeoulFloating)
+
+#checking each column
+#class(dt_SeoulFloating$date)
+dt_SeoulFloating[,uniqueN(date)]
+dt_SeoulFloating[, .N, by = month(date) ]
+#lot of data for the same date
+
+#class(dt_SeoulFloating$hour)
+dt_SeoulFloating[,unique(hour)]
+dt_SeoulFloating[,uniqueN(hour)]
+dt_SeoulFloating[, .N, by = hour ]
+#evenly distributed data by the hour - seems suspicious!!
+
+#class(dt_SeoulFloating$birth_year)
+dt_SeoulFloating[,unique(birth_year)]
+dt_SeoulFloating[,uniqueN(birth_year)]
+dt_SeoulFloating[, .N, by = birth_year ]
+#very evenrly distributed data for every birth_year
+
+#class(dt_SeoulFloating$sex)
+dt_SeoulFloating[,unique(sex)]
+dt_SeoulFloating[, .N, by = sex ]
+# equally distributed mail and female
+
+#class(dt_SeoulFloating$province)
+dt_SeoulFloating[,unique(province)]
+dt_SeoulFloating[,uniqueN(province)]
+#All the data contains same province detail. This column can removed
+
+#class(dt_SeoulFloating$city)
+dt_SeoulFloating[,unique(city)]
+dt_SeoulFloating[,uniqueN(city)]
+dt_SeoulFloating[, .N, by = city ]
+#Equal number of data for every city
+
+#class(dt_SeoulFloating$fp_num)
+sum(dt_SeoulFloating[,is.na(fp_num)])
+dt_SeoulFloating[,uniqueN(fp_num)]
+dt_SeoulFloating[, .N, by = fp_num ]
+dt_SeoulFloating[, mean(fp_num) ]
+#no information about this column and lot of people with the same fp_num
+```
+
+\newpage
+# Diving into the Data
+
+## Does the increase in temperature influence the number of confirmed cases?
+
+Upon receiving the dataset about the COVID-19 cases in South Korea, for which we were instructed to do a statistical analysis and visualization, we as a group decided to try to look into the data as deep as possible, to find some statistically interesting facts around which we could build our story. One of the first interesting trends found in th data which caught our eye was the connection between the weather and confirmed cases. \
+By making a matrix plot for the part of the data from which number of cases per day and weather conditions could be extracted, we could observe that there is a positive correlation between the number of cases and weather, which can be observed from the graph: \
+
+```{r, echo = FALSE}
+############################### question: Does weather influence the flattening of the curve?
+#will be using data.tables "weather_tidy" and "time"
+new_weather_time_dt <- merge(weather_tidy, time, by = "date", all = FALSE)
+
+ggpairs(new_weather_time_dt, columns=c("date", "avg_temp", "confirmed")) +
+        ggtitle("Positive correlation between number of confirmed cases and weather") 
+```
+
+After observing the correlation form the matrix plot, we decided to make a scatter plot, with putting average temperature as the x-axis and the number of confirmed cases as the y-axis, in order to observe the relation between these two variables up close.
+
+```{r, echo = FALSE}
+ggplot(data = new_weather_time_dt, aes(x = avg_temp, y = confirmed)) +
+        ggtitle("Positive correlation between temeprature and confirmed cases") +
+        geom_point()
+```
+
+From the scatter plot above we could observe some kind of a relation between weather and confirmed cases might really exists. So, for the next step, in order do observe more trustworthy information, we shifted our focus on the same trend, but narrowing it on a single province. As a reference province for which we chose to make a scatter plot of number of confirmed cases for specified ranges of temperature is province "Seoul":
+
+```{r, echo=FALSE, results='hide', fig.show='hide'}
+new_weather_time_dt <- new_weather_time_dt[!is.na(avg_temp),]
+
+new_weather_time_dt  <- new_weather_time_dt[avg_temp != 0]
+
+#division by 5:
+new_weather_time_dt  <- new_weather_time_dt[, range_temp := factor(
+  paste(
+    as.integer(5 * as.integer(avg_temp/5)), 
+    as.integer(5 * (as.integer(avg_temp/5)+1)), sep = " - ")  , 
+  ordered = TRUE,
+  levels = c("-5 - 0", "0 - 5", "5 - 10", "10 - 15", "15 - 20", "20 - 25", "25 - 30")
+)]
+
+
+point  <- format_format(big.mark = " ", decimal.mark = ",", scientific = FALSE) #needs "scales" library
+
+ ggplot(new_weather_time_dt, aes(x=range_temp, y=confirmed, fill=range_temp)) + 
+   geom_bar(stat="identity") +
+   scale_fill_brewer(palette="Oranges", name = "Temperature range") +
+   ggtitle("Decrease in number of cases may be influenced ba weather") +
+   labs(y="Confirmed", x="Temperature range") +
+   scale_y_continuous(labels = point) +
+   theme_minimal()
+#"oranges" is a palette which exist, but these pallets can have at most 8 colors, so you can try to make 
+# something similar of your own palette, but without using " scale_fill_brewer" function and using hex
+# color values and "scale_color_manual" functions:
+my_colors <- c("FF0000","EF0000", "DF0000", "CF0000", "BF0000", "AF0000", "900000", "800000", "700000", "600000", 
+               "500000", "400000")
+
+######################### division by 3:
+new_weather_time_dt  <- new_weather_time_dt[, range_temp := factor(
+  paste(
+    as.integer(3 * as.integer(avg_temp/3)), 
+    as.integer(3 * (as.integer(avg_temp/3)+1)), sep = " - ")  , 
+  ordered = TRUE,
+  levels = c("-6 - -3", "-3 - 0", "0 - 3", "3 - 6", "6 - 9", "9 - 12",
+             "12 - 15", "15 - 18", "18 - 21", "21 - 24", "24 - 27", "27 - 30")
+)]
+#colnames(new_weather_time_dt)
+#class(new_weather_time_dt[, range_temp]) #"factor"
+#head(new_weather_time_dt, 1000)
+
+ ggplot(data = new_weather_time_dt, aes(x = range_temp,  y = confirmed, fill = range_temp)) +
+   geom_bar(stat= "identity") +
+   ggtitle("Number of cases seem to decrease with increase of temperature") +
+   scale_y_continuous(labels = point) +
+   labs(y="Confirmed", x="Temperature range", fill = "Temperature legend") +
+   theme_minimal()
+#works without "scale_color_manual(values = my_colors) +"
+#help(element_text)
+
+######################### #division by 2:
+new_weather_time_dt  <- new_weather_time_dt[, range_temp := factor(
+  paste(
+    as.integer(2 * as.integer(avg_temp/2)), 
+    as.integer(2 * (as.integer(avg_temp/2)+1)), sep = " - ")  , 
+  ordered = TRUE,
+  levels = c("-8 - -4", "-4 - -2", "-2 - 0", "0 - 2", "2 - 4", "4 - 6",
+             "6 - 8", "8 - 10", "10 - 12", "12 - 14", "14 - 16", "16 - 18",
+             "18 - 20", "20 - 22", "22 - 24", "24 - 26", "26 - 28", "28 - 30",
+             "30 - 32", "32 - 34")
+  
+)]
+#colnames(new_weather_time_dt)
+#class(new_weather_time_dt[, range_temp]) #"factor"
+#head(new_weather_time_dt, 1000)
+my_colors2 <- c("FF0000","EF0000", "DF0000", "CF0000", "BF0000", "AF0000", "9F0000", "900000", "8F0000", "800000", 
+                "7F0000", "700000", "6F0000", "600000", "5F0000", "500000", "4F0000", "400000")
+
+ ggplot(data = new_weather_time_dt[!is.na(range_temp)], aes(x = range_temp,  y = confirmed, fill = range_temp)) +
+   geom_bar(stat= "identity") +
+   scale_y_continuous(labels = point) +
+   labs(y="Confirmed", x="Temperature range", 
+        title="Number of confirmed cases in Seoul decreses as the temperature rises",
+        fill = "Temperature legend") +
+   theme_minimal()
+#help(labs)
+
+#working without "scale_color_manual(values = my_colors2) +"
+```
+
+```{r, echo = FALSE}
+#temp as a whole number:
+new_weather_time_dt  <- new_weather_time_dt[, range_temp := as.integer(avg_temp)]
+
+#colnames(new_weather_time_dt)
+#class(new_weather_time_dt[, range_temp]) #"factor"
+#head(new_weather_time_dt, 1000)
+
+my_colors3 <- c("FFF000", "FF0000", "F0F000", "F00000", "EFF000", "EF0000", "E0F000", "E00000", "DFF000", "DF0000",
+                "D0F000", "D00000", "CFF000", "CF0000", "C0F000", "C00000", "BFF000", "BF0000", "B0F000", "B00000",
+                "AFF000", "AF0000", "A0F000", "A00000", "9FF000", "9F0000", "90F000", "90F000", "900000", "8FF000", 
+                "8F0000", "80F000", "800000", "7FF000", "7F0000", "70F000", "700000", "6FF000", "6F0000", "60F000",
+                "600000", "5FF000", "5F0000", "50F000", "500000", "4FF000", "4F0000", "40F000", "400000")
+#without "scale_color_manual(values = my_colors3) +" it is working
+
+ggplot(data = new_weather_time_dt, aes(x = range_temp,  y = confirmed, fill = range_temp)) +
+  ggtitle("Number of confirmed cases in Seoul decreses as the temperature rises") +
+  labs(y="Confirmed", x="Temperature range", fill = "Temperature legend") +
+  geom_bar(stat= "identity") +
+  scale_y_continuous(labels = point) +
+  theme_minimal()
+```
+
+As from the graph showing the relation between number of confirmed cases that happened when the temperature was in a specific range for province "Seoul", and taking into consideration the plot matrix and the scatter plot for the same trend, but for all of the data in the dataset, we got graphs from which we can make almost opposing conclusions. The plot matrix was suggesting that as the temperature rose, it is more likely that we will have a bigger number of confirmed cases, because of the positive correlation between two variables which denote these two occurrences. In addition, the scatter plot for the same data (all the data in the dataset), which was made afterwards, also suggested a rise in confirmed cases as the temperature rose, but on the other hand the bar plot in which we narrowed the data we examined to only the data fro province "Seoul", we can see that the number of confirmed cases for the higher temperatures tend to decrease. \
+After observing such data, we decided to continue looking the dataset from different perspectives, in order to find a perspective we thought we could build our story around. 
+
+## Is there relation between confirmed/deceased cases and age span as well as sex?
+
+The second perspective from which we decided to look at the data is by looking the numbers of confirmed and deceased in time, by splitting people into groups, depending on their gender, age and province in which they live. \
+In order to be able to make some assumptions in form of hypothesis, so that later we could on be able to test these hypothesis, we firstly visualized the given data. As well, an important note it that these graphs shows data from the whole dataset.\
+The first graph made for looking at the data from the new perspective shows a bar plot in which mortality among age groups of people are compared. The age groups were constructed so that people who are for and example between 20 and 29 years old assigned to age group "20s", between 30 and 39 to "30s", etc.
+
+```{r, echo = FALSE, results = 'hide'}
+time_age_new <- time_age[age_span!='0s', .(deceased = sum(deceased)), by = age_span]
+time_gender_new <- time_gender[, .(deceased = sum(deceased), confirmed = sum(confirmed)), by = c('sex', 'date')]
+#time_gender_new[, sum(deceased), by = sex] #more males dead
+#time_gender_new[, sum(confirmed), by = sex] #more females confirmed
+#time_age_new
+#time_gender_new
+
+color.function <- colorRampPalette( c( "#e0e0e0" , "#055e83" ) )
+color.ramp <- color.function( n = nrow( x = time_age_new ) )
+
+ggplot(time_age_new, aes(x=age_span, y=deceased)) + 
+  geom_bar(stat="identity", fill = color.ramp, position=position_dodge()) + labs(title="Mortality by age", x="Age", y = "Deaths") + 
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text(aes(label = paste0(round(deceased/sum(deceased)*100, digits = 2),"%")), position = position_stack(vjust = 0.7), size = 5)
+```
+
+The second graph made for taking a quick look the given data shows a bar plot in which numbers of deceased and confirmed cases of people are compared, with people being divided by their gender. 
+
+```{r, echo = FALSE, results = 'hide'}
+time_gender_sum <- time_gender_new[, .(Confirmed = sum(confirmed), Deceased = sum(deceased)), by = sex]
+#time_gender_sum
+
+time_gender_sum <- melt(time_gender_sum, id.vars = 'sex')
+
+#ggplot(data=time_gender_sum, aes(x=variable, y=value, fill=sex)) +
+  #geom_bar(stat="identity", position=position_dodge())
+
+time_gender_conf <- time_gender_sum[variable == "Confirmed",]
+time_gender_dec <- time_gender_sum[variable == "Deceased",]
+#options(scipen = 999)
+ggplot(NULL, aes(x=variable, fill = sex)) + geom_bar(data = time_gender_dec, aes(y = value), stat='identity', position = position_dodge()) +
+  geom_bar(data = time_gender_conf, aes(y = value/30), stat='identity', position = position_dodge()) + 
+  scale_y_continuous(
+    labels = scales::label_number_si(),
+    
+    # Features of the first axis
+    name = "Number of deceased",
+    
+    # Add a second axis and specify its features
+    sec.axis = sec_axis(trans=~.*30, name="Number of confirmed", labels = scales::label_number_si())
+  ) + 
+  scale_x_discrete(limits=c("Deceased", "Confirmed")) + 
+  labs(title="Confirmed vs deceased per sex", x="") + 
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5)) + scale_fill_discrete(name = "Sex") 
+```
+```{r, echo=FALSE, results='hide'}
+## non-cumulated data.table "time"
+time_notCumulated_dt_2  <- copy(time)
+setkey(time_notCumulated_dt_2 , date) #sorts the data.table according to it's "date" column
+
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , lag1_test := shift(test, n=1, type="lag")] 
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , noCumul_test := test - shift(test, n=1, type="lag", fill = 0)]
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , lag1_negative := shift(negative, n=1, type="lag")] 
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , noCumul_negative := negative - shift(negative, n=1, type="lag", fill = 0)]
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , lag1_confirmed := shift(confirmed, n=1, type="lag")] 
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , noCumul_confirmed := confirmed - shift(confirmed, n=1, type="lag", fill = 0)]
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , lag1_released := shift(released, n=1, type="lag")] 
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , noCumul_released := released - shift(released, n=1, type="lag", fill = 0)]
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , lag1_deceased  := shift(deceased , n=1, type="lag")] 
+time_notCumulated_dt_2 <- time_notCumulated_dt_2[ , noCumul_deceased  := deceased  - shift(deceased , n=1, type="lag", fill = 0)] 
+
+## non-cumulated data.table "timeProvince"
+timeProvince_notCumulated_dt_2  <- copy(timeProvince_tidy)
+setkey(timeProvince_notCumulated_dt_2 , date) 
+
+timeProvince_notCumulated_dt_2 <- timeProvince_notCumulated_dt_2 %>% 
+  select(date, time, province, confirmed, released, deceased) %>%
+  group_by(province) %>%
+  arrange(province) %>%
+  mutate(
+    lag1_province_confirmed = lag(confirmed),
+    noCumul_province_confirmed = confirmed - lag(confirmed, default=0),
+    lag1_province_released = lag(released),
+    noCumul_province_released = released - lag(released, default=0),
+    lag1_province_deceased = lag(deceased),
+    noCumul_province_deceased = deceased - lag(deceased, default=0)
+  )
+
+##https://stackoverflow.com/questions/61595890/does-dplyr-is-grouped-df-actually-require-a-date-frame-vs-a-data-table-tib
+class(timeProvince_notCumulated_dt_2) #"grouped_df" "tbl_df"     "tbl"        "data.frame" - tibble
+
+options(tibble.width = Inf) #changing options for tibbles so that every time it prints out all of the columns
+print(as_tibble(timeProvince_notCumulated_dt_2), n = Inf) #"Inf" used so that all of the rows of the tibble get printed
+print(as_tibble(filter(timeProvince_notCumulated_dt_2, province=="Incheon")), n = Inf)
+
+## non-cumulated data.table "time_age"
+timeAge_notCumulated_dt_2  <- copy(time_age)
+setkey(timeAge_notCumulated_dt_2 , date)
+timeAge_notCumulated_dt_2 <- timeAge_notCumulated_dt_2 %>% 
+                             select(date, time, age_span, confirmed, deceased) %>%
+                             group_by(age_span) %>%
+                             arrange(age_span) %>%
+                             mutate(
+                                lag1_age_confirmed = lag(confirmed),
+                                noCumul_age_confirmed = confirmed - lag(confirmed, default=0),
+                                lag1_age_deceased = lag(deceased),
+                                noCumul_age_deceased = deceased - lag(deceased, default=0)
+                              )
+options(tibble.width = Inf) 
+print(as_tibble(timeAge_notCumulated_dt_2), n = Inf)
+print(as_tibble(filter(timeAge_notCumulated_dt_2, age_span=="0s" | age_span=="10s")), n = Inf)
+timeAge_notCumulated_dt_2
+
+setwd('case_study_data/data')
+policy_new_dt_3 = fread("Policy.csv")
+policy_new_dt_3$start_date <- as.Date(policy_new_dt_3$start_date, "%Y-%m-%d")
+policy_new_dt_3$end_date <- as.Date(policy_new_dt_3$end_date, "%Y-%m-%d")
+
+policy_new_dt_3[, policy_duration := as.numeric(end_date - start_date)]
+policy_new_dt_3[, date := start_date]
+
+length(unique(policy_new_dt_3$date))
+
+policy_timeage  <- merge(timeAge_notCumulated_dt_2, policy_new_dt_3, by = "date", all.x = TRUE)
+policy_timeage
+
+policy_timeage <- as.data.table(policy_timeage)
+policy_timeage[type == 'Education']
+timeAge_notCumulated_dt_2 <- as.data.table(timeAge_notCumulated_dt_2)
+disputed_date <- copy(timeAge_notCumulated_dt_2)
+```
+
+### Looking at the non-cumulated data.
+
+After looking at the numbers present in the data for the number of tested, confirmed, deceased and people cured, we were suspicious about the information we had in the data. As we did not have a body to which we could address our concerns about the accuracy of the data given to us, and as well by knowing that the datasets we are working on are taken from a well-known website (Kaggle), we decide to look for answers there. This move turned out to be a good move, because we found out that most of the columns containing numerical values are cumulated, meaning that observations were not independent of each other. \
+
+If we look at the transformed, non-cumulated dataset, we can see that the first date from which our data begins ("2020-03-02") is the accumulated sum from the previous period for both the number of confirmed and the number of deceased cases. By saying "previous period" we refer to the period in which COVID-19 was present in South Korea, but the data were not collected for that period date-wise, like it did for all the dates after the "2020-03-02". For this reason, we excluded that date from our further calculations and visualizations, so it wouldn't act as an outlier and largely affect the statistics.
+
+```{r, echo=FALSE}
+disputed_date <- disputed_date[, c('lag1_age_confirmed', 'lag1_age_deceased') := NULL]
+head(disputed_date[age_span == '40s',])
+```
+
+#### What happens when we exclude the date 2020-03-02 from our calculations?
+
+\ 
+Then we firstly made the exact same plots as before, using the non-cumulated data and excluding the data from the date "2020-03-02" in order to see how may these changes affect the plots.
+
+```{r, echo = FALSE, results = 'hide'}
+timeAge_notCumulated_dt_2 <- timeAge_notCumulated_dt_2[date!=as.Date('2020-03-02'),]
+timeAge_notCumulated_dt_2
+timeAge_notCumulated_dt_2_test <- timeAge_notCumulated_dt_2[age_span!='0s',]
+timeAge_notCumulated_dt_2 <- timeAge_notCumulated_dt_2[age_span!='0s', .(noCumul_age_deceased = sum(noCumul_age_deceased)), by = age_span]
+color.function <- colorRampPalette( c( "#e0e0e0" , "#055e83" ) )
+color.ramp <- color.function( n = nrow( x = timeAge_notCumulated_dt_2 ) )
+ggplot(timeAge_notCumulated_dt_2, aes(x=age_span, y=noCumul_age_deceased)) + 
+  geom_bar(stat="identity", fill = color.ramp, position=position_dodge()) + labs(title="Mortality by age group", x="Age", y = "Deaths") + 
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text(aes(label = paste0(round(noCumul_age_deceased/sum(noCumul_age_deceased)*100, digits = 2),"%")), position = position_stack(vjust = 0.7), size = 5)
+
+time_gender
+timeGender_notCumulated_dt_2  <- copy(time_gender)
+setkey(timeGender_notCumulated_dt_2 , date) #sorts the data.table according to it's "date" column
+timeGender_notCumulated_dt_2 <- timeGender_notCumulated_dt_2 %>% 
+                                  select(date, time, sex, confirmed, deceased) %>%
+                                  group_by(sex) %>%
+                                  arrange(sex) %>%
+                                  mutate(
+                                    noCumul_gender_confirmed = confirmed - lag(confirmed, default=0),
+                                    noCumul_gender_deceased = deceased - lag(deceased, default=0)
+                                  )
+options(tibble.width = Inf) 
+print(as_tibble(timeGender_notCumulated_dt_2), n = Inf)
+print(as_tibble(filter(timeGender_notCumulated_dt_2, sex=="male")), n = Inf)
+
+timeGender_notCumulated_dt_2 <- as.data.table(timeGender_notCumulated_dt_2)
+timeGender_notCumulated_dt_2
+timeGender_notCumulated_dt_2 <- timeGender_notCumulated_dt_2[date!=as.Date('2020-03-02')]
+timeGender_notCumulated_dt_2 <- timeGender_notCumulated_dt_2[, month := month(date, label = TRUE, abbr = TRUE)]
+
+#confirmed vs dead graph for male and female
+
+time_gender_sum <- timeGender_notCumulated_dt_2[, .(Confirmed = sum(noCumul_gender_confirmed), Deceased = sum(noCumul_gender_deceased)), by = c('sex', 'month')]
+#time_gender_sum
+
+time_gender_sum <- melt(time_gender_sum, id.vars = c('sex', 'month'))
+
+#ggplot(data=time_gender_sum, aes(x=variable, y=value, fill=sex)) +
+  #geom_bar(stat="identity", position=position_dodge())
+
+time_gender_conf <- time_gender_sum[variable == "Confirmed",]
+time_gender_conf <- time_gender_conf[, .(value = sum(value)), by = c('sex', 'variable')]
+time_gender_dec <- time_gender_sum[variable == "Deceased"]
+time_gender_dec <- time_gender_dec[, .(value = sum(value)), by = c('sex', 'variable')]
+#options(scipen = 999)
+ggplot(NULL, aes(x=variable, fill = sex)) + geom_bar(data = time_gender_dec, aes(y = value), stat='identity', position = position_dodge()) +
+  geom_bar(data = time_gender_conf, aes(y = value/20), stat='identity', position = position_dodge()) + 
+  scale_y_continuous(
+    labels = scales::label_number_si(),
+    
+    # Features of the first axis
+    name = "Number of deceased",
+    
+    # Add a second axis and specify its features
+    sec.axis = sec_axis(trans=~.*20, name="Number of confirmed", labels = scales::label_number_si())
+  ) + 
+  scale_x_discrete(limits=c("Deceased", "Confirmed")) + 
+  labs(title="Confirmed and deceased cases per sex", x="") + 
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5)) + scale_fill_discrete(name = "Sex")  
+  #scale_fill_manual(name = "Sex", values = c('#ffcccc', '#99ccff'))
+
+timeGender_notCumulated_dt_2_new <- timeGender_notCumulated_dt_2[, .(deceased = sum(noCumul_gender_deceased), confirmed = sum(noCumul_gender_confirmed)), by = c('sex', 'month')]
+
+# ggplot(timeGender_notCumulated_dt_2_new, aes(x=date, y=deceased, group=sex)) +
+#   geom_line(aes(color=sex))+
+#   geom_point(aes(color=sex), size = 1.5) + labs(title="Mortality by sex", x="Date", y = "Deaths") + theme_minimal() +
+#   theme(plot.title = element_text(hjust = 0.5)) + scale_color_discrete(name = "Sex")
+# 
+# ggplot(timeGender_notCumulated_dt_2_new, aes(x=date, y=confirmed, group=sex)) +
+#   geom_line(aes(color=sex))+
+#   geom_point(aes(color=sex), size = 1.5) + labs(title="Confirmed by sex", x="Date", y = "Confirmed") + theme_minimal() +
+#   theme(plot.title = element_text(hjust = 0.5)) + scale_color_discrete(name = "Sex")
+```
+
+At first glance, graphs look very similar, and therefore we can observe some trends in the data and according to them set our hypotheses, which we will later on test to see if they hold. \
+
+We set three hypotheses, based on our visualizations and usual assumptions that can be heard daily, and those are: \
+1. Among confirmed cases there are more female than male \
+2. Infected individuals who are male are dying more in comparison to female \
+3. People over 60 years have higher risk of death \
+
+### Additional plotting, grouped by months
+
+Now we take a deeper look into our data, but this time grouped by months.
+
+```{r, echo = FALSE}
+
+ggplot(timeGender_notCumulated_dt_2_new, aes(x=month, y=deceased, fill=sex)) +
+  geom_bar(stat="identity", position=position_dodge()) + 
+  labs(title="No signifcant difference in mortality by sex", x="Date", y = "Deaths") + 
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5)) + scale_fill_discrete(name = "Sex")
+
+ggplot(timeGender_notCumulated_dt_2_new, aes(x=month, y=confirmed, fill=sex)) +
+  geom_bar(stat="identity", position=position_dodge()) + 
+  labs(title="No signifcant difference in infected by sex", x="Date", y = "Confirmed") + 
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5)) + scale_fill_discrete(name = "Sex")
+
+```
+
+\newpage
+## Hypotheses testing
+
+After separating confirmed cases, as well as deceased by months, we can already see that our first and second hypotheses may not hold, so here we perform hypotheses testing.
+
+### Plotting the data using boxplots
+
+Boxplots were made so that we can observe the data that we will later on use for our hypothesis testing and choosing the type of test we going to perform to see if the hypothesis are supported. \
+
+```{r, echo = FALSE}
+#overall mortality by sex higher in men, confirmed higher in woman
+# timeGender_notCumulated_dt_2[, sum(noCumul_gender_deceased), by = sex]
+# timeGender_notCumulated_dt_2[, sum(noCumul_gender_confirmed), by = sex]
+# timeGender_notCumulated_dt_2[, mean(noCumul_gender_deceased), by = sex]
+# timeGender_notCumulated_dt_2[, mean(noCumul_gender_confirmed), by = sex]
+
+timeAge_notCumulated_dt_2_test <- timeAge_notCumulated_dt_2_test[, ':=' (over_50 = age_span %in% c('60s', '70s', '80s'), under_50 = age_span %in% c('10s', '20s', '30s', '40s', '50s'))]
+
+timeAge_notCumulated_dt_2_test <- melt(timeAge_notCumulated_dt_2_test[, .(noCumul_age_deceased, over_50, under_50)], id.vars = c('noCumul_age_deceased'))[value == TRUE]
+
+ggplot(timeGender_notCumulated_dt_2, aes(sex, noCumul_gender_deceased)) + geom_boxplot()
+ggplot(timeGender_notCumulated_dt_2, aes(sex, noCumul_gender_confirmed)) + geom_boxplot()
+ggplot(timeAge_notCumulated_dt_2_test, aes(variable, noCumul_age_deceased)) + geom_boxplot()
+```
+
+After taking a look at the data in boxplots, we decided to see if the data was normally distributed, so that we can choose will we perform a t-test on the data, or are we going to perform a Wilcoxon Rank Sum test.
+
+### Checking if the data is normaly distributed
+
+We decided to make QQ-plots to test if the data we  are working on is normally distributed.
+
+```{r, echo=FALSE}
+
+qqPlot(timeGender_notCumulated_dt_2$noCumul_gender_deceased)
+qqPlot(timeGender_notCumulated_dt_2$noCumul_gender_confirmed)
+qqPlot(timeAge_notCumulated_dt_2_test$noCumul_age_deceased)
+
+#not normally distributed?
+#we will have to use wilcoxon rank sum test, diff in means = 0
+```
+
+As the QQ-plots show that the data is not normally distributed, we decide that for the testing of our proposed hypothesis we will use Wilcoxon Rank Sum test.
+
+### Performing Wilcoxon Rank Sum test
+
+Since the data turned out not to be normal distributed, it can be ranked, and that we managed to make data observations independent among each other by transforming the cumulated data into non-cumulated data, we fulfilled all the assumptions that are needed in order to perform a Wilcoxon Rank Sum test for the hypothesis we made, and that is exactly what we did next. \
+Additionally, in the first two tests we already had binary variables (male/female), but in the third case we had to make it by dividing the observed people in two groups, above 60 years of age as one group, and the rest age spans as second group.
+
+```{r, echo = FALSE}
+
+wilcox.test(noCumul_gender_deceased ~ sex, data=timeGender_notCumulated_dt_2)
+wilcox.test(noCumul_gender_confirmed ~ sex, data=timeGender_notCumulated_dt_2)
+
+#since confirmed look normaly distributed we can try with t-test
+#t.test(noCumul_gender_confirmed ~ sex, data=timeGender_notCumulated_dt_2, var.equal=TRUE)
+
+#test for time age
+#people over 50 more affected
+
+# timeAge_notCumulated_dt_2_test[, sum(noCumul_age_deceased), by = variable]
+# timeAge_notCumulated_dt_2_test[, mean(noCumul_age_deceased), by = variable]
+
+wilcox.test(noCumul_age_deceased ~ variable, data=timeAge_notCumulated_dt_2_test, alternative = 'greater')
+```
+
+We can see that the p-value in first two tests is not small enough to reject our H0-s, which suggests no difference in means. Consequently we can state that the first two hypotheses we proposed at the beginning cannot be proven (at least not from the data we are dealing with). \
+
+On the other hand, p-value in age comparison is very significant, small enough to reject our H0, and therefore prove our claim from the beginning, that there is significant difference in deceased cases between people over and under 60 years of age.
+
+\newpage
+# Policies: How the South Korean government learned to battle the spread of Covid-19
+
+## Gaining knowledge through massive testing
+
+The following graphs demonstrate the course of the testing and the development of positive Covid-19 tests throughout the pandemic.
+
+```{r, echo = FALSE}
+# code can be inserted after script from case_study_data_cleaned_all.R 
+
+# data merging Felix for intermediate submission
+
+# issue: Dongjag-gu wrongly named: should be Dongjak-gu
+
+#gsub("Dongjag-gu", "Dongjak-gu", dt_SeoulFloating$city)
+
+# create data.table of unique cities with corresponding sum of floating population (fp_num) from dt_SeoulFloating
+
+# dt_floating_infections <- data.table(aggregate(dt_SeoulFloating$fp_num, by = list(Category = dt_SeoulFloating$city), FUN = sum))
+# 
+# names(dt_floating_infections)[names(dt_floating_infections) == "Category"] <- "Seoul_city"
+# names(dt_floating_infections)[names(dt_floating_infections) == "x"] <- "sum_fp_num"
+
+# create new column for sums of city occurences from PatientInfo_dt
+
+#dt_floating_infections[, total_infections := sum(PatientInfo_dt$city == Seoul_city), by = Seoul_city]
+
+# scale sum of floating population down to make it more readable
+
+# names(dt_floating_infections)[names(dt_floating_infections) == "sum_fp_num"] <- "sum_fp_num_in_millions"
+# dt_floating_infections$sum_fp_num_in_millions <- round(dt_floating_infections$sum_fp_num_in_millions / 1000000, digits = 0)
+
+
+# check the correlation coefficient
+
+#print(cor(dt_floating_infections$sum_fp_num_in_millions, dt_floating_infections$total_infections))
+# gives 0.51 -> moderate correlation
+
+
+# graph data per city in basic scatterplot
+
+# ggplot(dt_floating_infections, aes(x = sum_fp_num_in_millions, y = total_infections)) + geom_point(color = "black") + geom_smooth(method="auto", se=TRUE, fullrange=FALSE, level = 0.95, color = "orange") + ylab("Total Infections per District") + xlab("Total floating population per district (in millions)") + theme_minimal()
+
+# possible addition - add city names: + geom_text(label = dt_floating_infections$Seoul_city)
+
+
+# Claim: Disregarding the outer rims, the amount of infections per city are mildly correlated with the incoming (floating) population
+# Possibly, the size of the floating population has an effect on the number of infections in a certain area
+
+# (check further correlations: size of city area, infections within the city (until 1000),...)
+
+# initial idea: find policies that relate to the floating population in Seoul
+# redirection: check policies in general first
+
+# Analysis 1: policies 25 & 26 - Drive through screening centers
+
+# Hypothesis: number of tests and infections increases after this date
+# (this would support the government efforts to gain visibility)
+
+# implementation dates: 2020-02-26 & 2020-03-04
+
+
+# create new table, based on time dataset
+# columns: data, calendar week, test (non cumulative), negative, confirmed
+
+time_testing <- as.data.table(copy(time))
+  
+# change the data to non-cumulative with lag()
+
+time_testing[, test_per_day := (test - lag(test))]
+time_testing[1, test_per_day := 1]
+
+# repeat for negative tests
+
+time_testing[, negative_tests_per_day := (negative - lag(negative))]
+time_testing[1, negative_tests_per_day := 0]
+
+# repeat for positive tests
+
+time_testing[, confirmed_tests_per_day := (confirmed - lag(confirmed))]
+time_testing[1, confirmed_tests_per_day := 1]
+
+
+# ggplot theme
+
+theme_group48 <- function(base_size = 11,
+                          base_family = "",
+                          base_line_size = base_size / 170,
+                          base_rect_size = base_size / 170){
+  theme_minimal(base_size = base_size, 
+                base_family = base_family,
+                base_line_size = base_line_size) %+replace%
+    theme(
+      plot.title = element_text(
+        color = rgb(25, 43, 65, maxColorValue = 255), 
+        face = "bold",
+        hjust = 0),
+      axis.title = element_text(
+        color = rgb(105, 105, 105, maxColorValue = 255),
+        size = rel(1)),
+      axis.text = element_text(
+        color = rgb(105, 105, 105, maxColorValue = 255),
+        size = rel(1)),
+      # panel.grid.major = element_line(
+      #  rgb(105, 105, 105, maxColorValue = 255),
+      # linetype = "dotted"),   
+      #  panel.grid.minor = element_line(
+      #  rgb(105, 105, 105, maxColorValue = 255),
+      # linetype = "dotted", 
+      #  size = rel(4)),   
+      
+      complete = TRUE
+    )
+}
+
+
+# first claim data: drive through testing centers on 26.2. & 4.3. (policies 25 & 26)
+
+# generate graph that shows testing
+
+ggplot(time_testing, aes(x = date, y = test_per_day, group = 1)) + geom_line(color = "orange") + xlab("Total tests") + theme_group48() + ggtitle("Daily registered test throughout the first months of the pandemic")
+
+# generate graph that shows infections
+
+ggplot(time_testing, aes(x = date, y = confirmed_tests_per_day, group = 1)) + geom_line(color = "orange") + xlab("Total confirmed infections") + theme_group48() + ggtitle("Daily confirmed cases throughout the first months of the pandemic")
+```
+
+Consequently, we decided to investigate this data for its reliability. Therefore we computed the ratio of daily negative tests, as shown in the subsequent diagram.
+
+```{r, echo=FALSE}
+# generate graph that shows ratio of negative and total tests over time
+
+time_testing[, testing_ratio := round((negative_tests_per_day / test_per_day), 4)]
+
+ggplot(time_testing, aes(x = date, y = testing_ratio, group = 1)) + geom_line(color = "orange") + xlab("Testing Ratio") + theme_group48() + ggtitle("Daily ratio of negative to total tests")
+
+# issue: data is faulty -> some days have more negative than total tests
+# possible solution: group by week to potentially flatten out data reporting delays
+
+time_testing[, calendar_week := week(date)]
+
+weekly_infection_rates <- data.table((aggregate(time_testing$negative_tests_per_day, by = list(Category = time_testing$calendar_week), FUN = sum)) / (aggregate(time_testing$test_per_day, by = list(Category = time_testing$calendar_week), FUN = sum)))
+weekly_infection_rates[, Category := c(seq(3, 26))]
+
+names(weekly_infection_rates)[names(weekly_infection_rates) == "Category"] <- "week"
+names(weekly_infection_rates)[names(weekly_infection_rates) == "x"] <- "negative_testing_ratio"
+
+# graph to get overview
+
+# ggplot(weekly_infection_rates, aes(x = week, y = negative_testing_ratio, group = 1)) + geom_line(color = "orange") + xlab("Testing Ratio") + ggtitle("Share of negative tests of total tests per week") + theme_group48()
+
+# issue: data is still to unclean to draw any conclusions from it (total tests - negative tests != positive tests, by a lot...)
+# potential reason:
+# as testing developed, tests couldn't be evaluated same day anymore
+# thus negative & positive results may be linked to tests from previous days
+
+# week 8 & week 9 (19.2 - 3.3.):
+# comparatively low numbers while total tests per day went up by a lot day by day (show in second graph?)
+```
+
+An apparent issue comes up: the data is faulty, as the amount of negative tests cannot be above the amount of total tests, resulting in a ratio above 1. Furthermore, this is a recurring issue which can be observed for several days. This may be due to a late evaluation of tests.
+
+To deal with this issue, a new variable is introduced: daily_evaluated_tests. This is the sum of positive and negative tests, per day.
+
+```{r, echo= FALSE}
+# second test: clean total infected data by taking sum of confirmed and negative tests, instead of the total number from the dataset
+
+time_testing[, daily_evaluated_tests := (time_testing$negative_tests_per_day + time_testing$confirmed_tests_per_day)]
+
+# new table: cleaned negative testing ratio
+
+weekly_cleaned_infection_rates <- data.table((aggregate(time_testing$negative_tests_per_day, by = list(Category = time_testing$calendar_week), FUN = sum)) / (aggregate(time_testing$daily_evaluated_tests, by = list(Category = time_testing$calendar_week), FUN = sum)))
+weekly_cleaned_infection_rates[, Category := c(seq(3, 26))]
+
+names(weekly_cleaned_infection_rates)[names(weekly_cleaned_infection_rates) == "Category"] <- "week"
+names(weekly_cleaned_infection_rates)[names(weekly_cleaned_infection_rates) == "x"] <- "negative_testing_ratio_cleaned"
+
+# cleaned confirmed testing ratio
+
+weekly_cleaned_confirmed_infection_rates <- data.table((aggregate(time_testing$confirmed_tests_per_day, by = list(Category = time_testing$calendar_week), FUN = sum)) / (aggregate(time_testing$daily_evaluated_tests, by = list(Category = time_testing$calendar_week), FUN = sum)))
+weekly_cleaned_confirmed_infection_rates[, Category := c(seq(3, 26))]
+
+names(weekly_cleaned_confirmed_infection_rates)[names(weekly_cleaned_confirmed_infection_rates) == "Category"] <- "week"
+names(weekly_cleaned_confirmed_infection_rates)[names(weekly_cleaned_confirmed_infection_rates) == "x"] <- "confirmed_testing_ratio_cleaned"
+
+# adapt table data
+
+weekly_infection_ratio <- weekly_cleaned_infection_rates[week > 3]
+
+ggplot(weekly_infection_ratio, aes(x = week, y = negative_testing_ratio_cleaned, group = 1)) + geom_line(color = "blue") + xlab("Week") + ylab("Share of negative Tests") + geom_vline(xintercept = 9, linetype="dotted", color = "black", size=1) + geom_vline(xintercept = 10, linetype="dotted", color = "black", size=1) + theme_group48() + ylim(0, 1) + ggtitle("Share of negative tests to daily evaluated tests, including the introduction of drive through screening centers")
+
+```
+
+The plot of the adapted data shows an indentation for the weeks eight, nine and ten - the only major one for the entire duration depicted in the dataset. The implementation of the drive through screening centers, depicted as vertical lines, may show a relevant correlation here.
+
+What the indentation of the curve may indicate: the Korean government got a more realistic image of the actual Covid-19 spread throughout the population. However, this would only be true if at the same time testing capacities were scaled up.
+
+Subsequently, a new graph showing the daily evaluated tests for the course of the pandemic is introduced. Accordingly, weekly data for the confirmed tests is shown.
+
+```{r, echo=FALSE}
+
+# 1. total testing showed the highest increase after initiation of drive through testing centers
+
+testing_weekly <- data.table(aggregate(time_testing$daily_evaluated_tests, by = list(Category = time_testing$calendar_week), FUN = sum))
+
+# get weekly increase (percentage increase would be confusing, as growth rates high from the start (e.g. 1 -> 100))
+
+testing_weekly[, weekly_increase := (x - lag(x))]
+
+names(testing_weekly)[names(testing_weekly) == "Category"] <- "week"
+names(testing_weekly)[names(testing_weekly) == "x"] <- "total_tests"
+
+# graph it
+
+# ggplot(testing_weekly, aes(x = week, y = weekly_increase, group = 1)) + geom_line(color = "orange") + xlab("Cleaned testing Ratio")
+
+# alternative graph: weekly total tests
+ggplot(testing_weekly, aes(x = week, y = total_tests, group = 1)) + geom_line(color = "orange") + xlab("Cleaned testing total") + theme_group48() + ggtitle("Daily evaluated tests, as a sum of negative and positive tests")
+
+# adapt to only look at start of crisis until week 18
+
+testing_weekly_start <- testing_weekly[week < 19]
+
+# graph confirmed infections
+
+confirmed_weekly <- data.table(aggregate(time_testing$confirmed_tests_per_day, by = list(Category = time_testing$calendar_week), FUN = sum))
+confirmed_weekly[, weekly_increase := (x - lag(x))]
+
+names(confirmed_weekly)[names(confirmed_weekly) == "Category"] <- "week"
+names(confirmed_weekly)[names(confirmed_weekly) == "x"] <- "total_confirmed_tests"
+
+confirmed_weekly_start <- confirmed_weekly[week < 19]
+
+ggplot(confirmed_weekly_start, aes(x = week, y = total_confirmed_tests, group = 1)) + geom_line(size = 1, color = "orange") + xlab("Week") + ylab("Positive Tests") + geom_vline(xintercept = 9, linetype="dotted", color = "black", size=1) + geom_vline(xintercept = 10, linetype="dotted", color = "black", size=1) + theme_group48() + ggtitle("Amount of total positive Covid-19 tests, related to the establishment of drive through screening centers")
+
+```
+
+The amount of positive tests (and thus relatedly the amount of total tests) went up significantly at the same time as the share of negative test results went down.
+
+```{r, echo=FALSE}
+ggplot(testing_weekly_start, aes(x = week, y = total_tests, group = 1)) + geom_line(size = 1, color = "blue") + xlab("week") + ylab("Evaluated tests") + geom_vline(xintercept = 9, linetype="dotted", color = "black", size=1) + geom_vline(xintercept = 10, linetype="dotted", color = "black", size=1) + theme_group48() + ggtitle("Amount of total evaluated Covid-19 tests, related to the establishment of drive through screening centers")
+```
+
+All in all, the drive through screening centers gave the South Korean government the necessary capacities to test enough citizens to:
+1. dive into the actual Covid-19 spread and thus find appropriate measures according to probable infection numbers.
+2. continue testing with the target to bring the share of negative infections back up to close to 100%, indicating control above new infection cases.
+
+As per the following source, a major part of tests in South Korea at the start of the pandemic were indeed conducted in Drive Through Screening centers: https://edition.cnn.com/2020/03/02/asia/coronavirus-drive-through-south-korea-hnk-intl/index.html
+
+
+\newpage
+## The importance of speed in the implementation of new policies
+
+```{r, echo=FALSE}
+# Second check: Policy no. 59 - public transport drivers to ban passengers without masks
+# & Policy no. 61 - government extended tightened quarantine measures
+
+# questions to answer:
+# did the number of floating population (of which a share takes public transport)... 
+# ...change after 26/5?
+
+# create new table with weekly floating population for each district
+
+# all fp_nums, per day
+# ggplot(dt_SeoulFloating, aes(x = date, y = fp_num, group = 1)) + geom_line(color = "orange")
+
+# get weekly compounded data
+
+Seoul_Floating_policy <- data.table(copy(dt_SeoulFloating))
+
+Seoul_Floating_policy[, week := week(Seoul_Floating_policy$date)]
+
+Seoul_Floating_metro_policy <- data.table(aggregate(Seoul_Floating_policy$fp_num, by = list(Category = Seoul_Floating_policy$week), FUN = sum))
+
+names(Seoul_Floating_metro_policy)[names(Seoul_Floating_metro_policy) == "Category"] <- "week"
+names(Seoul_Floating_metro_policy)[names(Seoul_Floating_metro_policy) == "x"] <- "fp_num"
+
+# scale down by millions
+
+Seoul_Floating_metro_policy[, fp_num_in_millions := round(Seoul_Floating_metro_policy$fp_num / 1000000)]
+
+Seoul_Floating_metro_policy <- Seoul_Floating_metro_policy[week > 13]
+ggplot(Seoul_Floating_metro_policy, aes(x = week, y = fp_num_in_millions, group = 1)) + geom_line(color = "orange") + xlab("Week") + ylab("Floating population in Seoul in millions") + geom_vline(xintercept = 22, linetype="dotted", color = "black", size=1) + theme_group48() + ggtitle("Floating population in Seoul from week 14 until the extension of quarantine measures due to increasing cases")
+```
+
+There is a sharp drop in the floating population in week 21 already - before the implementation of further policies. Why could that be?
+
+```{r, echo=FALSE}
+# policy date: 26/5 - week 21 (27/5 ist week 22)
+
+# could be due to passengers being banned, but this high of a drop is unrealistic
+
+# more likely: policy 61 - government extended tightened quarantine measures:
+# 28.5 / week 22
+# shutdown of public facilities (parks, museums,...) after local virus outbreak
+# source: https://www.euronews.com/2020/05/28/coronavirus-restrictions-return-in-south-korea-after-new-spike-in-covid-19-cases
+
+# crosscheck with infection numbers after this date in Seoul - did they go down?
+# timeProvince
+
+seoul_infections_help <- data.table(copy(timeProvince_tidy))
+
+seoul_infections_help[, week := week(seoul_infections_help$date)]
+
+seoul_infections_help <- subset(seoul_infections_help, province == "Seoul")
+
+seoul_infections <- data.table(aggregate(seoul_infections_help$confirmed, by = list(Category = seoul_infections_help$week), FUN = sum))
+
+# non-cumulative infections
+
+seoul_infections[, infections_per_week := (x - lag(x))]
+
+names(seoul_infections)[names(seoul_infections) == "Category"] <- "week"
+names(seoul_infections)[names(seoul_infections) == "x"] <- "cumulated_infections_per_week"
+
+# focus on relevant dates
+
+seoul_infections <- seoul_infections[week > 13]
+
+# graph it
+
+ggplot(seoul_infections, aes(x = week, y = infections_per_week, group = 1)) + geom_line(color = "orange") + xlab("Week") + ylab("Positive tests in Seoul metro area") + geom_vline(xintercept = 22, linetype="dotted", color = "black", size=1) + theme_group48() + ggtitle("Rise of infection cases in Seoul after the first wave of the pandemic")
+```
+
+
+The graph indicates that infections continued to rise after local quarantine measures had been extended. In combination with the floating population data, this suggests that the population already started reacting to a new peek in infections in week 20, limiting movement and contact with other people.
+
+In this case, it seems as if the government reacted later than the population itself. This may lead to people losing trust in a government's health policy, as it's effectiveness is questioned by the proactiveness of the population itself.
+
+\newpage
+
+## What role different government policies played on the number of cases?
+
+Every government started taking measures against the coronavirus outbreak for their own country and so did the Korean government.
+To have closer look with what Korean government did to lower the infection rate, we looked into the data set Policy.
+
+### When did government implement policies concerning Corona outbreak?
+
+
+The Policy dataset had the date of implementation and the Time dataset had the number of cases. We tried merging these two datasets to figure out the trend between implementation of the policy and the number of cases at that point. This helped us visualize which policies had a major impact in flattening the curve and which did not.
+
+
+
+```{r, echo = FALSE}
+#Graphs to get better idea on which policies
+#had an affect on number of cases of corona
+
+#merging two data sets time and policy
+#names(dt_policy)[names(dt_policy) == "start_date"] <- "date"
+dt_policy[, date := start_date]
+dt_policy$date <- as.Date(dt_policy$date, "%Y-%m-%d")
+timeNpolicy  <- merge(time,dt_policy, by = "date", all.y = TRUE)
+ 
+#Policies Vs Timeline
+  ggplot(timeNpolicy,aes(x = date, y = confirmed)) +
+  geom_line(color = "red", size = 0.5) +
+  geom_point(aes(color=type), size = 2, alpha = 4 )+
+  labs(title="Korean government implemented policies \nat regular intervals", x="Month", y = "Confirmed Cases") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_color_discrete(name = "Policy type")+
+  scale_color_brewer(palette = "Dark2")
+  
+```
+Inference : 
+
+
+ - Government kept on implementing and iterating the policies in different sectors throughout the corona outbreak
+ - And was able to flatten the curve considerably by May 2020, whereas the cases see some surge in June.
+ 
+### Which policies impacted more?
+
+After looking at the policy distribution throughout the course of the outbreak. It became important to find which policy had more impact than the others and hence we looked at the policy and the number of cases before and after its implementation. The time when the policy was important was very crucial. 
+
+To find about each policy we tried to facet it by policy type and draw inferences.
+
+```{r, echo = FALSE}
+# Various policies and their affects
+  
+  ggplot(data=timeNpolicy, aes(x=(date), y=confirmed, fill = type)) +
+  geom_bar(stat="identity", width = 5, position = position_dodge2(padding = 0.1)) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.3)) +
+  labs(title="Curve of confirmed cases flattened during the\nImmigration and Social policy implementation") +
+  facet_wrap(~type)+
+  scale_color_discrete(name = "Policy type")+
+  scale_fill_brewer(palette = "Dark2")
+```  
+Inference:
+
+
+ - The policies of the type : Health, Social and Immigration proved promising as after certain policies implementation the rate of increase in the cases was reduced
+
+ - Reforms in the education and technological policies may have also played a role decreasing the rate 
+
+ - Administrative policies were implemented fairly late when the number of infections was stabilized
+
+
+### Did cases come down because people were more aware of the infection?
+
+There was a dramatic flattening of the curve in South Korea in the month of April. It arises a question whether it happened because the people were more aware of the infection and were taking precautions more seriously or was it all about the government and effective policy implementation.
+
+We tried looking at the dataset SearchTrend to find out how many times the name "Corona" was searched and when exactly did this happened. For this we merged the search trend with the Time dataset.
+
+```{r, echo = FALSE}
+##Search Trend for keyword : Coronavirus
+  
+# Data wrangling
+ dt_SearchTrend$date <- as.Date(dt_SearchTrend$date, "%Y-%m-%d")
+ timeNSearch  <- merge(time,dt_SearchTrend, by = "date", all.x = TRUE)
+  
+# Graph of search trend  
+  ggplot(timeNSearch) + 
+  geom_line(aes(x = date, y = confirmed), colour = "red")+
+  geom_line(aes(x = date, y = coronavirus), color = "dark blue", size = 0.9)+
+  scale_y_log10()+
+  labs(title = "Search for keyword \'Corona\' increased\n  during the initial outbreak", y = "Confirmed Cases", x = "Timeline") + 
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0))
+```
+Inference:
+
+
+ - When there was an increase in the confirmed cases in the month of March, the search trend for getting information about the virus was also on the rise
+
+ - But the trend soon declined as the number of cases started reducing considerably
+
+
+## Diving deeper into the Social Distancing and Immigration Policies 
+
+Before looking at the policies, we must first look at the most affected provinces of South Korea. For this we used dataset Time and dataset Province and merged them. Here we also added an additional column stating the confirmed cases per day at every province.
+
+```{r, echo = FALSE}
+#removing duplicate dates from timeNpolicy
+timeNpolicy <- timeNpolicy[!duplicated(date)]
+
+#creating new data tables for following deductions only
+PatientInfo_sam <- PatientInfo_dt
+
+#Change confirmed date to date in Patientinfo_sam
+setnames(PatientInfo_sam, "confirmed_date", "date")
+
+#getting confirmed cases per day and creating a new dt for it
+timeProvince_sam <- timeProvince_tidy[,conf_p_day := confirmed[] - shift(confirmed[]), by = "province"]
+
+#remove NA value
+timeProvince_sam <- na.omit(timeProvince_sam, cols="conf_p_day")
+
+#merging the reason for infection in Top_province
+setDT(timeProvince_sam)[ , infection_from := PatientInfo_sam$infection_case[match(timeProvince_sam$date , PatientInfo_sam$date)] , ]
+
+```
+
+```{r, echo = FALSE}
+#find top provinces
+#Top 5 most infected provinces
+province_cases <- (timeProvince_sam[, sum(conf_p_day, na.rm = TRUE) , by = "province"])
+
+Province5 <- head(province_cases[order(-V1)],5)
+Province5
+
+#create a new dt for just 5 provinces
+Top_province <- timeProvince_sam[province %in% c("Daegu","Seoul","Gyeongsangbuk-do","Gyeonggi-do","Incheon")]
+
+```
+
+Inference : 
+
+We figured out that these 5 provinces were most affected in the first six months of corona outbreak in South Korea and hence we further did analysis of government policies in these affected provinces only.
+
+
+```{r, echo = FALSE}
+ggplot(Province5,aes(x = province, y = (V1))) +
+geom_bar(stat = "identity", aes(fill = province, width = 0.5)) +
+theme(plot.title = element_text(hjust = 0.2))+
+labs(title="Top 5 most affected provinces\n (in the first 6 months)", x="Korean Provinces", y = "Confirmed Cases") + 
+scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) +
+scale_fill_brewer(palette = "Set1") + theme_minimal()
+
+#scale_color_gradient(low = "red", high = "white") 
+# avoiding overlapping and also displaying all the values in the x axis scale_x_discrete(guide = guide_axis(n.dodge=3))+
+  
+```
+Inference : 
+
+ - Daegu was the most affected province with close to 7000 cases. (Reason: Patient#31 that we discussed in the introduction)
+
+ - Cases in Incheon was fairly less than that of other 3 most affected provinces(excluding Daegu)
+
+## Social Distancing Policy and its impact
+
+We figured from the previous analysis that social distancing policy was implemented during the time the curve was flattening and hence we tried looking into the patterns.
+
+We found that there were 4 Social distancing campaigns were run in South Korea in the first 6 months. 
+
+ - The very first was implemented on 29th of February when there was a exponential increase in the confirmed cases.
+ - Second was implemented on 22rd of March and it was diligently followed by the citizens
+ - Third  was implemented on 20th of April - the cases came down and hence this social distancing campaign was weak
+ - Fourth was implemented on 6th of May and it was weaker than the other campaigns in terms of citizens following the rules.
+ 
+We will look at the impact of first and second Social distancing campaigns.
+
+```{r, echo = FALSE}
+ggplot(Top_province[date ==as.Date('2020-02-29')],aes(x = province, y = (confirmed))) + geom_bar(stat = "identity", aes(fill = province), width = 0.5) + 
+theme(plot.title = element_text(hjust = 0.2))+
+labs(title="Situation as of 29th February 2020", x="Korean Provinces", y = "Confirmed Cases") + 
+scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) +
+scale_fill_brewer(palette = "Set1") + theme_minimal()
+```
+Inference: 
+
+ - Cases in Daegu  was significantly more than any other province.
+ - Impact on Incheon was negligible during this time
+ 
+
+### What happened to the number of cases in these 5 provinces after implementing the Social Distancing policy?
+
+```{r, echo = FALSE}
+#number of confirmed cases in SD campaign-1 per province
+Top_province[date >= as.Date('2020-03-01') & date <= as.Date('2020-03-21'), sum(conf_p_day), by = province]
+```
+
+```{r, echo = FALSE}
+ggplot(Top_province[date >= as.Date('2020-02-15') & date <= as.Date('2020-03-21')],aes(x = (date), y = (conf_p_day))) + geom_histogram(stat = "identity", width = 0.6, aes(fill = province))+
+geom_vline(aes(xintercept=as.Date("2020-02-29"), color = "29th February", width = 0.6)) +
+theme(plot.title = element_text(hjust = 0.5))+
+labs(title="Cases decreased during the first Social \nDistancing campaign",x = "From 15/02 to 21/03", y = "Confirmed Cases") +
+scale_color_manual(name = "Vertical Line", values = c("29th February"="Black"))+
+scale_fill_brewer(palette = "Set1") + theme_minimal()
+
+```
+Inference:
+
+
+ - Number of cases seem to decrease after implementation of the policy specially in Daegu
+ - Social distancing was followed in Daegu diligently
+ - During the same period testing was also improved and hence could also been the reason for this
+
+### Checking correlation of confirmed cases per day and during the first social distancing campaign:
+
+```{r, echo = FALSE}
+cor.test(Top_province[date >= as.Date('2020-03-01') & date <= as.Date('2020-03-21'),as.numeric(date)], Top_province[date >= as.Date('2020-03-01') & date <= as.Date('2020-03-21'),conf_p_day])
+
+#Top_province[date >= as.Date('2020-03-01') & date <= as.Date('2020-03-21'), .(correlation=cor(as.numeric(date),conf_p_day))]
+```
+Inference:
+
+
+We found that the it has negative Pearson co-relation which implies confirmed cases reduced during the social distancing policy. 
+Also the Null hypothesis(that there is no co-relation) can be rejected because of non-significant p-value. Which implies that there is a co-relation (here negative) between confirmed cases and social distancing campaign time period.
+
+
+### Checking if the graphs of cases during Social Distancing 1 period was confounded by provinces:
+
+```{r, echo = FALSE}
+ggplot(Top_province[date >= as.Date('2020-03-01') & date <= as.Date('2020-03-21')], aes(x = day(date), y = conf_p_day)) + geom_line(aes(color = province),  size = 0.8) + facet_wrap(~province, scales = "free") +
+theme(plot.title = element_text(hjust = 0))+
+labs(title="Social Distancing Campaign #1 \ndid not prove beneficial in every Province ", x="From 01-21 March", y = "Confirmed Cases") + 
+#scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) +
+scale_color_brewer(palette = "Set1") + theme_minimal()
+
+```
+Inference : 
+
+
+ - To our surprise social distancing 1 did not prove beneficial in every province as case in Gyeonggi-do, Incheon and Seoul spiked during this period
+ - Province can be thought as the confounding variable here
+
+
+### Co-relation with different provinces:
+
+```{r, echo = FALSE}
+Top_province[date >= as.Date('2020-03-01') & date <= as.Date('2020-03-21'), .(correlation=cor(as.numeric(date),conf_p_day)), by=province]
+
+ggplot(Top_province[date >= as.Date('2020-03-01') & date <= as.Date('2020-03-21'), .(correlation=cor(as.numeric(date),conf_p_day)), by=province], aes(x = province, y = correlation)) + 
+geom_bar(stat = "identity", aes(fill = province), width = 0.4)+
+theme(plot.title = element_text(hjust = 0.2))+
+labs(title="Correlation of confirmed cases during\nSocial Distancing Campaign#1", x="From 01-21 March", y = "Correlation of Confirmed cases") + 
+scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) +
+scale_fill_brewer(palette = "Set1") + theme_minimal()
+
+```
+
+Inference: 
+
+
+During the first Social distancing campaign in Deagu and Gyeongsangbuk-do, the number of per day cases declined significantly.
+It did not work in Seoul and Incheon, whereas cases rose significantly in Gyeonggi-do.
+After confounding by provinces we found that one of the reasons for decline in cases at Deagu and Gyeongsangbuk-do was Social Distancing campaign - 1 from 29th of february to 21st of march.
+
+
+### Checking correlation of different reasons of getting infected during SD1
+
+```{r, echo = FALSE}
+Top_province[date >= as.Date('2020-03-01') & date <= as.Date('2020-03-21'), .(correlation=cor(as.numeric(date),conf_p_day)), by=c("infection_from","province")]
+
+```
+
+Plotting the graph of correlation:
+
+```{r, echo = FALSE}
+ggplot(Top_province[date >= as.Date('2020-03-01') & date <= as.Date('2020-03-21'), .(correlation=cor(as.numeric(date),conf_p_day)), by=c("province","infection_from")], aes(x = infection_from, y = correlation)) + geom_bar(stat = "identity", aes(fill = infection_from), width = 0.4) + facet_wrap(~province)+
+theme(plot.title = element_text(hjust = 0.2))+
+labs(title="Cause of Infection in each province", x="Between 01-21 March", y = "Correlation") + 
+scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) +
+scale_fill_brewer(palette = "Dark2") + theme_minimal()
+
+```
+Inference : 
+
+
+During the Social distancing 1 period: In Daegu, Gyeongsangbuk-do, Incheon and Seoul cases increased because of overseas inflow and in Gyeonggi-do because of the Dongon Church meetup and Guru-gu call center, basically because of many small hotspot.
+
+\newpage
+
+## Checking after implementation of policy of immigrations - 14 day mandatory quarantine before and after 1st of April:
+
+
+Because we saw in the previous section that the number of cases due to "Overseas Inflow" increased during march. The Government started taking measures to stop this. And hence number of immigration policies were implemented to stop overseas people from entering the Korean territory. The repartition flights still continued. But only after stopping people from entering from Europe and also implementing the 14 day mandatory quarantine policy did we saw that the cases declined.
+
+During the same period social distancing two was prevalent. But cases arising from overseas inflow was on increase and hence we looked into the 14 Day mandatory quarantine policy which was implemented on 1st of April.
+
+```{r, echo = FALSE}
+#after SD-1
+Top_province[date >= as.Date('2020-03-22') & date <= as.Date('2020-03-30'), sum(conf_p_day), by = province]
+```
+Inference:
+
+
+Between 23rd march to 30th of April, just before the implementation of mandatory policy this was the data of confirmed cases.
+
+```{r, echo = FALSE}
+#after 14D-Im
+Top_province[date >= as.Date('2020-04-01') & date <= as.Date('2020-04-15'), sum(conf_p_day), by = province]
+```
+Inference:
+
+In the next two weeks the rate of increase of cases was lesser than the week before the immigration policy was implemented.
+
+```{r, echo = FALSE}
+ggplot(Top_province[date >= as.Date('2020-03-22') & date <= as.Date('2020-04-21')],aes(x = (date), y = (conf_p_day))) + geom_histogram(stat = "identity", width = 0.4, aes(fill = province))+
+geom_vline(aes(xintercept=as.Date("2020-04-01"), colour = "1st April", width = 0.6))+
+labs(title="Cases decreased after implementing the\n14 days Mandatory Quarantine Policy",x = "From 22/03 to 21/04",y = "Confirmed cases")+
+scale_color_manual(name = "Vertical Line", values = c("1st April"="Black"))+
+scale_fill_brewer(palette = "Set1") +
+theme_minimal()
+```
+Inference : 
+
+
+ - Number of cases seemed to decrease after implementing the immigration policies and Social distancing campaign - 2
+ 
+ - There was surge in the first week after implementation but gradually all the cases decreased within 2 weeks of Immigration policies
+
+### Checking correlation of confirmed cases per day and 3 weeks after 14 day mandatory quarantine:
+
+```{r, echo = FALSE}
+cor.test(Top_province[date >= as.Date('2020-04-01') & date <= as.Date('2020-04-21'),as.numeric(date)], Top_province[date >= as.Date('2020-04-01') & date <= as.Date('2020-04-21'),conf_p_day])
+
+```
+Inference : 
+
+
+We found that the it has negative Pearson co-relation which implies confirmed cases reduced after implementing mandatory quarantine for immigrants and restriction of oversea flyers.
+Also the Null hypothesis can be rejected because of non-significant p-value. Which implies that there is a co-relation between confirmed cases and policy that was implemented
+
+
+### Digging deeper and checking confounding with top provinces:
+
+```{r, echo = FALSE}
+Top_province[date >= as.Date('2020-04-01') & date <= as.Date('2020-04-21'), .(correlation=cor(as.numeric(date),conf_p_day)), by = province]
+```
+
+```{r, echo = FALSE}
+ggplot(Top_province[date >= as.Date('2020-04-01') & date <= as.Date('2020-04-21'), .(correlation=cor(as.numeric(date),conf_p_day)), by=province], aes(x = province, y = correlation)) + 
+geom_bar(stat = "identity", aes(fill = province), width = 0.4)+
+theme(plot.title = element_text(hjust = 0.2))+
+labs(title="Correlation of confirmed cases during\n14 Day Quarantine policy", x="Between 01-21 April", y = "Correlation of Confirmed cases") + 
+scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) +
+scale_fill_brewer(palette = "Set1") + theme_minimal()
+
+
+```
+Inference:
+
+
+ - Significant decrease in the number of cases after 1st of April due to immigration policy of 14 day mandatory quarantine.
+ - Every province shows a negative correlation, meaning as the time increased the cases decreased in all of these provinces
+ - Cases in Gyeongsangbuk-do was not impacted much due to Immigration policies. This tells that in this province there was some other factor lead to increase in cases during this time.
+
+### Graph of cases from 1st April  to April 21st - Policy - mandatory quarantine confounded by provinces:
+
+```{r, echo = FALSE}
+ggplot(Top_province[date >= as.Date('2020-04-01') & date <= as.Date('2020-04-21')], aes(x = day(date), y = conf_p_day)) + geom_line(aes(color = province),  size = 0.8) + 
+facet_wrap(~province, scales = "free") +
+theme(plot.title = element_text(hjust = 0))+
+labs(title="14 day Mandatory Quarantine for flyers \nproved beneficial in every Province ", x="Between 01-21 April", y = "Confirmed Cases") + 
+#scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) +
+scale_color_brewer(palette = "Set1") + theme_minimal()
+
+
+```
+
+Inference:
+
+The graphs of majorly hit provinces 3 weeks after the implementation of the immigration policies declined. This means that immigration policies reduced the number of cases in majorly hit provinces also the Social distancing campaign-2 was prevalent during the same time and could have also been the confounding factor.
+
+\newpage
+### Wrapping it up
+
+
+The following graph shows the impact of Social Distancing - 1 and 14 Day mandatory quarantine policy and when were they implemented in terms of rise in cases. 
+
+Social Distancing - 1 cannot be seen as significant unless we look at its impact on provinces individually.
+
+Immigration policies and Social distancing - 2 prevalent during April and hence both could have resulted in the decline of cases substantially in majorly hit provinces. Due to lack of data we cannot really say which policy had how much impact in the month of April.
+
+```{r, echo = FALSE}
+ggplot(timeProvince_sam[date > as.Date("2020-01-01") & date < as.Date("2020-06-30")],aes(x = date, y = conf_p_day)) +
+geom_histogram( fill = "red", bins = 50, stat= "identity", width = 0.4) +
+geom_vline(aes(xintercept=as.Date("2020-02-26"), color = "26th Feb - Health Policy", width = 0.6))+  
+geom_vline(aes(xintercept=as.Date("2020-03-01"), color = "29th Feb - Social Distancing", width = 0.6))+
+geom_vline(aes(xintercept=as.Date("2020-04-01"), color = "1st April - Immigration", width = 0.6))+
+geom_vline(aes(xintercept=as.Date("2020-05-28"), color = "28th May - Health Policy", width = 0.6))+  
+labs(title="Decline in number of per day cases\nafter implementing certain policies", x="Timeline", y = "Confirmed cases per day") +
+theme(plot.title = element_text(hjust = 0)) + 
+scale_color_discrete(name = "Policy type")+
+scale_color_manual(name = "Policy start date", values = c("26th Feb - Health Policy" = "blue", "29th Feb - Social Distancing"="Green","1st April - Immigration" = "black", "28th May - Health Policy" = "Orange"))+
+scale_fill_brewer(palette = "Set1") + theme_minimal()
+
+```
+
+\newpage
+# Our Limitations
+
+We tried to test the association between decrease in the number of cases and time duration (before and after implementation of certain policies). But as we did not know which test to use for this (as no time-series correlation was discussed in the course), we tried using the correlation test for our hypothesis. Also when we dug deeper into the ‘Patients’ dataset we found that the ‘cause of infection’ was evenly distributed among all the top5 majorly affected provinces. What we mean by this is that if the cause of infection is say, contact with a patient, and if we looked at the number of positive cases with this cause of infection, then it will be the same, say - 20 for all the top5 most affected provinces. 
+
+So in all, we couldn't statistically conclude very strongly that which policy exactly proved to be more effective in terms of reducing the number of cases in South Korea. Although we found that per day positive cases were confounded by the provinces (the influence of 3rd variable) and hence could only conclude in which province which policy seemed to work.
+
+Due to lack of knowledge with the time series statistical testing we could not strongly comment on exactly which policies helped.
+
+But we really wanted to check for
+
+ - Increased in Testing and 5Day rotation mask distribution system; Health policies
+ - Social distancing campaign #1; Social Policy
+ - 14 Day mandatory quarantine; Immigration policy 
+ - Social distancing campaign #2 (during the same duration as 14 Day mandatory policy)  
+
+Because many times 2 or more policies were implemented during the same duration we could not really differentiate which had more correlation in terms of reducing the number of cases. Rather than that, we found the number of cases reduced with increase in time (negative correlation)
+
+
+\newpage
+# CONCLUSION
+
+Over the course of this case study, we have analyzed various relations from the provided Kaggle dataset on the early months of the Covid-19 outbreak in South Korea. From first analyses of weather related data, we arrived at general observations of effects on the South Korean population.
+
+We noticed irregularities in the data of confirmed cases and mortality rates between genders. While we couldn't prove the non-apparent similarity of impacts on female and male citizens, we were able to show that members of the population above 60 are significantly more at risk of dying in relation with a Covid-19 infection.
+
+Subsequently, we decided to focus on the means of containing the virus: namely the different governmental policies and their effects.
+
+First off, we discovered that the establishment of Drive Through Screening Centers allowed to kick off massive testing and thus provide the government with a realistic image of the spread of Covid-19 around the country. 
+
+Secondly, we looked at the importance of quick policy decisions. In Seoul, after a local outbreak, the population limited its own movement before further measures were imposed or extended.
+
+Finally, we showed that the consequently launched Social Distancing Campaign was able to drive infection numbers down. However, this did not work uniformly for all affected provinces - some even saw an increase in cases afterwards. But then we looked into the reason for increase in the number of cases during the social distancing period and it was due to "overseas inflow", then we looked at the immediate policies that were implemented to curb the increase and found 14Day mandatory quarantine policy was the game changer. In general, adjusting policies to local needs seems to be the way to go.
+
+To summarize: Throughout our case study, we have shown that the South Korean government led a successful campaign of policies at the beginning of the Covid-19 pandemic. Fast learning about the virus, followed by first, broad measures and consequently more specialized, local measures quickly showed its effects.
+
+\newpage
+# USED SOURCES
+
+1. “ScienceDirect”, May 2020 \
+  < https://www.sciencedirect.com/science/article/pii/S2590198220300221 > (21. Jan. 2021.) 
+
+2. “Kaggle”, Apr. 2020 \
+  < https://www.kaggle.com/kimjihoo/coronavirusdataset > (05. Jan. 2021.) 
+  
+3. “Stack Overflow”, 2008 \
+  < https://stackoverflow.com/questions/6322413/shifting-a-data-frame-in-r > (06. Jan. 2021.)
+
+4. “cran.r-project.org”, Aug. 1993 \
+  < https://cran.r-project.org/web/packages/dplyr/vignettes/window-functions.html > (06. Jan. 2021.)
+
+5. "Reuters", Jan. 2020 \
+< https://www.reuters.com/article/us-china-health-pneumonia-south-korea/south-korea-confirms-first-case-of-new-coronavirus-in-chinese-visitor-idUSKBN1ZJ0C4 > (15. Jan. 2021.)
+
+6. "Times of India", Mar. 2020 \
+< https://timesofindia.indiatimes.com/world/rest-of-world/how-one-patient-turned-koreas-coronavirus-outbreak-into-an-epidemic/articleshow/74333157.cms > (15. Jan. 2021.)
