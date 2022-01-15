@@ -30,7 +30,7 @@ What is the required configuration for running this code
 2. Load the .rmd file
 3. Have a look at the code and analysis
 
-## Key-Findings <a name="key"></a>
+✍️ ## Key-Findings <a name="key"></a>
 
 1. People above 60 had a significantly higher risk of mortality compared to people below 60
 2. Drive-through testing centers helped the South Korean government to efficiently assess the realisted spread of Covid-19 throughout the population
